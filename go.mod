@@ -1,4 +1,4 @@
-module github.com/gelantern/redis-utils
+module github.com/getlantern/redis-utils
 
 go 1.16
 
