@@ -5,8 +5,8 @@ import (
 	"crypto/tls"
 	"flag"
 	"net"
+	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,25 +23,27 @@ import (
 )
 
 var log = golog.LoggerFor("redis-utils")
-var redisURLRegExp = regexp.MustCompile(`^rediss?(\+sentinel)?://.*?:(.*?)@([\d\.(:\d*)?,]+)$`)
 
 // Defaults used when required options are not provided.
 const DefaultMasterName = "mymaster"
 const DefaultSentinelPort = 36379
 
 func parseRedisURL(redisURL string) (isSentinel bool, password string, hosts []string, err error) {
-	matches := redisURLRegExp.FindStringSubmatch(redisURL)
-	if len(matches) < 4 {
-		return false, "", nil, errors.New("%s should match %s", redisURL, redisURLRegExp.String())
+	uri, err := url.ParseRequestURI(redisURL)
+	if err != nil {
+		return false, "", nil, errors.New("Invalid redis url %s: %v", redisURL, err)
 	}
-	hosts = strings.Split(matches[3], ",")
+	if uri.Scheme != "redis" && uri.Scheme != "rediss+sentinel" {
+		return false, "", nil, errors.New("%s should contain either a 'redis://' or 'rediss+sentinel://' scheme", redisURL)
+	}
+	if uri.User != nil {
+		password, _ = uri.User.Password()
+	}
+	hosts = strings.Split(uri.Host, ",")
 	if hosts == nil {
 		return false, "", nil, errors.New("%s does not contain a list of hosts", redisURL)
 	}
-	if matches[1] != "" && matches[1] != "+sentinel" {
-		return false, "", nil, errors.New("%s should contain either a 'redis://' or 'rediss+sentinel://' scheme", redisURL)
-	}
-	return matches[1] == "+sentinel", matches[2], hosts, nil
+	return uri.Scheme == "rediss+sentinel", password, hosts, nil
 }
 
 type Config struct {

@@ -12,7 +12,7 @@ import (
 )
 
 func TestParseRedisURL(t *testing.T) {
-	for i, testCase := range []struct {
+	for _, testCase := range []struct {
 		input            string
 		expectedPassword string
 		expectedHosts    []string
@@ -33,13 +33,15 @@ func TestParseRedisURL(t *testing.T) {
 		{"redis://:@1.2.3.4", "", []string{"1.2.3.4"}, false},
 		{"redis://:pass123@1.2.3.4:26379", "pass123", []string{"1.2.3.4:26379"}, false},
 		{"redis://bob:pass123@1.2.3.4:26379", "pass123", []string{"1.2.3.4:26379"}, false},
+		{"redis://:pass123@somedomain.com", "pass123", []string{"somedomain.com"}, false},
 	} {
-		t.Log("test case", i)
-		isSentinel, password, hosts, err := parseRedisURL(testCase.input)
-		require.NoError(t, err)
-		require.Equal(t, testCase.sentinel, isSentinel)
-		require.Equal(t, testCase.expectedPassword, password)
-		require.Equal(t, testCase.expectedHosts, hosts)
+		t.Run(testCase.input, func(t *testing.T) {
+			isSentinel, password, hosts, err := parseRedisURL(testCase.input)
+			require.NoError(t, err)
+			require.Equal(t, testCase.sentinel, isSentinel)
+			require.Equal(t, testCase.expectedPassword, password)
+			require.Equal(t, testCase.expectedHosts, hosts)
+		})
 	}
 }
 
