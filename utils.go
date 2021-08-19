@@ -127,9 +127,13 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 			Dialer:           redisDialer,
 		})
 	} else {
+		host := redisHosts[0]
+		if !strings.Contains(host, ":") {
+			host = host + ":" + strconv.Itoa(DefaultSentinelPort)
+		}
 		c = redis.NewClient(&redis.Options{
 			Password:     redisPassword,
-			Addr:         redisHosts[0],
+			Addr:         host,
 			PoolSize:     config.PoolSize,
 			PoolTimeout:  opTimeout,
 			ReadTimeout:  opTimeout,
