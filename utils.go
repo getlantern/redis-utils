@@ -27,6 +27,7 @@ var log = golog.LoggerFor("redis-utils")
 // Defaults used when required options are not provided.
 const DefaultMasterName = "mymaster"
 const DefaultSentinelPort = 36379
+const DefaultPort = 6379
 
 func parseRedisURL(redisURL string) (isSentinel bool, password string, hosts []string, err error) {
 	uri, err := url.ParseRequestURI(redisURL)
@@ -129,7 +130,7 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 	} else {
 		host := redisHosts[0]
 		if !strings.Contains(host, ":") {
-			host = host + ":" + strconv.Itoa(DefaultSentinelPort)
+			host = host + ":" + strconv.Itoa(DefaultPort)
 		}
 		c = redis.NewClient(&redis.Options{
 			Password:     redisPassword,
