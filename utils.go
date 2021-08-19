@@ -9,9 +9,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/getlantern/errors"
+	"github.com/reflog/minisentinel"
+	"github.com/stretchr/testify/require"
 
 	"github.com/getlantern/golog"
 	"github.com/getlantern/keyman"
@@ -138,4 +142,22 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 		return nil, errors.New("error pinging redis: %v", err)
 	}
 	return c, nil
+}
+
+func StartTestRedisSentinel(t *testing.T, masterName string) string {
+	t.Helper()
+
+	m := miniredis.NewMiniRedis()
+	require.NoError(t, m.Start())
+	s := minisentinel.NewSentinel(m, minisentinel.WithMasterName(masterName))
+	require.NoError(t, s.Start())
+	return s.Addr()
+}
+
+func StartTestRedis(t *testing.T) string {
+	t.Helper()
+
+	m := miniredis.NewMiniRedis()
+	require.NoError(t, m.Start())
+	return m.Addr()
 }

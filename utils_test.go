@@ -48,6 +48,8 @@ func newString(s string) *string {
 }
 
 func testServerTLS(t *testing.T) *tls.Config {
+	t.Helper()
+
 	cert, err := tls.LoadX509KeyPair("test_data/server.crt", "test_data/server.key")
 	require.NoError(t, err)
 
