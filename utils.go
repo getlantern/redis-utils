@@ -3,6 +3,7 @@ package redisutils
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"net"
 	"net/url"
@@ -48,7 +49,7 @@ func parseRedisURL(redisURL string) (isSentinel bool, password string, hosts []s
 }
 
 type Config struct {
-	CAFile         string
+	CAFile         string // optional, if not set, will use host CA
 	ClientKeyFile  string
 	ClientCertFile string
 	URL            string
@@ -58,12 +59,6 @@ type Config struct {
 }
 
 func SetupRedisClient(config *Config) (*redis.Client, error) {
-	if config.CAFile == "" {
-		return nil, errors.New("Please set a certificate authority file")
-	}
-	if _, err := os.Stat(config.CAFile); os.IsNotExist(err) {
-		return nil, errors.New("Cannot find certificate authority file")
-	}
 	if config.ClientKeyFile == "" {
 		return nil, errors.New("Please set a client private key file")
 	}
@@ -80,11 +75,19 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 	if err != nil {
 		return nil, errors.New("Failed to load client certificate: %v", err)
 	}
-	redisCACert, err := keyman.LoadCertificateFromFile(config.CAFile)
-	if err != nil {
-		return nil, errors.New("Failed to load CA cert: %v", err)
-	}
 
+	var certPool *x509.CertPool
+	if config.CAFile != "" {
+		if _, err2 := os.Stat(config.CAFile); os.IsNotExist(err2) {
+			return nil, errors.New("Cannot find certificate authority file")
+		}
+
+		redisCACert, err2 := keyman.LoadCertificateFromFile(config.CAFile)
+		if err2 != nil {
+			return nil, errors.New("Failed to load CA cert: %v", err2)
+		}
+		certPool = redisCACert.PoolContainingCert()
+	}
 	redisIsSentinel, redisPassword, redisHosts, err := parseRedisURL(config.URL)
 	if err != nil {
 		return nil, errors.New("Failed to parse Redis URL: %v", err)
@@ -95,7 +98,7 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 	redisDialer := func(ctx context.Context, network, addr string) (net.Conn, error) {
 		return tls.Dial(network, addr, &tls.Config{
 			InsecureSkipVerify: flag.Lookup("test.v") != nil, // during test runs, skip verification
-			RootCAs:            redisCACert.PoolContainingCert(),
+			RootCAs:            certPool,
 			Certificates:       []tls.Certificate{redisClientCert},
 			ClientSessionCache: tls.NewLRUClientSessionCache(100),
 		})
