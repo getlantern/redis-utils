@@ -35,8 +35,8 @@ func parseRedisURL(redisURL string) (isSentinel bool, password string, hosts []s
 	if err != nil {
 		return false, "", nil, errors.New("Invalid redis url %s: %v", redisURL, err)
 	}
-	if uri.Scheme != "redis" && uri.Scheme != "rediss+sentinel" {
-		return false, "", nil, errors.New("%s should contain either a 'redis://' or 'rediss+sentinel://' scheme", redisURL)
+	if uri.Scheme != "redis" && uri.Scheme != "rediss" && uri.Scheme != "rediss+sentinel" {
+		return false, "", nil, errors.New("%s should contain either a 'redi[s]://' or 'rediss+sentinel://' scheme", redisURL)
 	}
 	if uri.User != nil {
 		password, _ = uri.User.Password()
