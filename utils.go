@@ -30,22 +30,24 @@ const DefaultMasterName = "mymaster"
 const DefaultSentinelPort = 36379
 const DefaultPort = 6379
 
-func parseRedisURL(redisURL string) (isSentinel bool, password string, hosts []string, err error) {
+func parseRedisURL(redisURL string) (isSentinel bool, isTLS bool, password string, hosts []string, err error) {
 	uri, err := url.ParseRequestURI(redisURL)
 	if err != nil {
-		return false, "", nil, errors.New("Invalid redis url %s: %v", redisURL, err)
+		return false, false, "", nil, errors.New("Invalid redis url %s: %v", redisURL, err)
 	}
 	if uri.Scheme != "redis" && uri.Scheme != "rediss" && uri.Scheme != "rediss+sentinel" {
-		return false, "", nil, errors.New("%s should contain either a 'redi[s]://' or 'rediss+sentinel://' scheme", redisURL)
+		return false, false, "", nil, errors.New("%s should contain either a 'redi[s]://' or 'rediss+sentinel://' scheme", redisURL)
 	}
 	if uri.User != nil {
 		password, _ = uri.User.Password()
 	}
 	hosts = strings.Split(uri.Host, ",")
 	if hosts == nil {
-		return false, "", nil, errors.New("%s does not contain a list of hosts", redisURL)
+		return false, false, "", nil, errors.New("%s does not contain a list of hosts", redisURL)
 	}
-	return uri.Scheme == "rediss+sentinel", password, hosts, nil
+	isSentinel = uri.Scheme == "rediss+sentinel"
+	isTLS = isSentinel || uri.Scheme == "rediss"
+	return isSentinel, isTLS, password, hosts, nil
 }
 
 type Config struct {
@@ -59,49 +61,52 @@ type Config struct {
 }
 
 func SetupRedisClient(config *Config) (*redis.Client, error) {
-	if config.ClientKeyFile == "" {
-		return nil, errors.New("Please set a client private key file")
-	}
-	if _, err := os.Stat(config.ClientKeyFile); os.IsNotExist(err) {
-		return nil, errors.New("Cannot find client private key file")
-	}
-	if config.ClientCertFile == "" {
-		return nil, errors.New("Please set a client certificate file")
-	}
-	if _, err := os.Stat(config.ClientCertFile); os.IsNotExist(err) {
-		return nil, errors.New("Cannot find client certificate file")
-	}
-	redisClientCert, err := tls.LoadX509KeyPair(config.ClientCertFile, config.ClientKeyFile)
-	if err != nil {
-		return nil, errors.New("Failed to load client certificate: %v", err)
-	}
-
-	var certPool *x509.CertPool
-	if config.CAFile != "" {
-		if _, err2 := os.Stat(config.CAFile); os.IsNotExist(err2) {
-			return nil, errors.New("Cannot find certificate authority file")
-		}
-
-		redisCACert, err2 := keyman.LoadCertificateFromFile(config.CAFile)
-		if err2 != nil {
-			return nil, errors.New("Failed to load CA cert: %v", err2)
-		}
-		certPool = redisCACert.PoolContainingCert()
-	}
-	redisIsSentinel, redisPassword, redisHosts, err := parseRedisURL(config.URL)
+	redisIsSentinel, redisUsesTLS, redisPassword, redisHosts, err := parseRedisURL(config.URL)
 	if err != nil {
 		return nil, errors.New("Failed to parse Redis URL: %v", err)
 	}
+	var redisDialer func(ctx context.Context, network, addr string) (net.Conn, error)
+	if redisUsesTLS {
+		if config.ClientKeyFile == "" {
+			return nil, errors.New("Please set a client private key file")
+		}
+		if _, err := os.Stat(config.ClientKeyFile); os.IsNotExist(err) {
+			return nil, errors.New("Cannot find client private key file")
+		}
+		if config.ClientCertFile == "" {
+			return nil, errors.New("Please set a client certificate file")
+		}
+		if _, err := os.Stat(config.ClientCertFile); os.IsNotExist(err) {
+			return nil, errors.New("Cannot find client certificate file")
+		}
+		redisClientCert, err := tls.LoadX509KeyPair(config.ClientCertFile, config.ClientKeyFile)
+		if err != nil {
+			return nil, errors.New("Failed to load client certificate: %v", err)
+		}
 
-	// We use TLS as the transport. If we simply specify the TLSConfig, the Redis library will
-	// establish TLS connections to Sentinel, but plain TCP connections to masters.
-	redisDialer := func(ctx context.Context, network, addr string) (net.Conn, error) {
-		return tls.Dial(network, addr, &tls.Config{
-			InsecureSkipVerify: flag.Lookup("test.v") != nil, // during test runs, skip verification
-			RootCAs:            certPool,
-			Certificates:       []tls.Certificate{redisClientCert},
-			ClientSessionCache: tls.NewLRUClientSessionCache(100),
-		})
+		var certPool *x509.CertPool
+		if config.CAFile != "" {
+			if _, err2 := os.Stat(config.CAFile); os.IsNotExist(err2) {
+				return nil, errors.New("Cannot find certificate authority file")
+			}
+
+			redisCACert, err2 := keyman.LoadCertificateFromFile(config.CAFile)
+			if err2 != nil {
+				return nil, errors.New("Failed to load CA cert: %v", err2)
+			}
+			certPool = redisCACert.PoolContainingCert()
+		}
+
+		// We use TLS as the transport. If we simply specify the TLSConfig, the Redis library will
+		// establish TLS connections to Sentinel, but plain TCP connections to masters.
+		redisDialer = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return tls.Dial(network, addr, &tls.Config{
+				InsecureSkipVerify: flag.Lookup("test.v") != nil, // during test runs, skip verification
+				RootCAs:            certPool,
+				Certificates:       []tls.Certificate{redisClientCert},
+				ClientSessionCache: tls.NewLRUClientSessionCache(100),
+			})
+		}
 	}
 	opTimeout := config.Timeout - 500*time.Millisecond
 	var c *redis.Client
