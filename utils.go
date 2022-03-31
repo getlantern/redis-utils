@@ -67,21 +67,19 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 	}
 	var redisDialer func(ctx context.Context, network, addr string) (net.Conn, error)
 	if redisUsesTLS {
-		if config.ClientKeyFile == "" {
-			return nil, errors.New("Please set a client private key file")
-		}
-		if _, err := os.Stat(config.ClientKeyFile); os.IsNotExist(err) {
-			return nil, errors.New("Cannot find client private key file")
-		}
-		if config.ClientCertFile == "" {
-			return nil, errors.New("Please set a client certificate file")
-		}
-		if _, err := os.Stat(config.ClientCertFile); os.IsNotExist(err) {
-			return nil, errors.New("Cannot find client certificate file")
-		}
-		redisClientCert, err := tls.LoadX509KeyPair(config.ClientCertFile, config.ClientKeyFile)
-		if err != nil {
-			return nil, errors.New("Failed to load client certificate: %v", err)
+		var redisClientCerts []tls.Certificate
+		if config.ClientKeyFile != "" && config.ClientCertFile != "" {
+			if _, err := os.Stat(config.ClientKeyFile); os.IsNotExist(err) {
+				return nil, errors.New("Cannot find client private key file")
+			}
+			if _, err := os.Stat(config.ClientCertFile); os.IsNotExist(err) {
+				return nil, errors.New("Cannot find client certificate file")
+			}
+			redisClientCert, err := tls.LoadX509KeyPair(config.ClientCertFile, config.ClientKeyFile)
+			if err != nil {
+				return nil, errors.New("Failed to load client certificate: %v", err)
+			}
+			redisClientCerts = append(redisClientCerts, redisClientCert)
 		}
 
 		var certPool *x509.CertPool
@@ -103,7 +101,7 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 			return tls.Dial(network, addr, &tls.Config{
 				InsecureSkipVerify: flag.Lookup("test.v") != nil, // during test runs, skip verification
 				RootCAs:            certPool,
-				Certificates:       []tls.Certificate{redisClientCert},
+				Certificates:       redisClientCerts,
 				ClientSessionCache: tls.NewLRUClientSessionCache(100),
 			})
 		}
