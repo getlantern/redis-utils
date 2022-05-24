@@ -152,9 +152,11 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 		})
 	}
 
-	if err := c.Ping(context.Background()).Err(); err != nil {
-		return nil, errors.New("error pinging redis: %v", err)
-	}
+	/*
+		if err := c.Ping(context.Background()).Err(); err != nil {
+			return nil, errors.New("error pinging redis: %v", err)
+		}
+	*/
 	return c, nil
 }
 
