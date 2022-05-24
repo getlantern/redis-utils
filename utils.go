@@ -56,6 +56,7 @@ type Config struct {
 	ClientCertFile string
 	URL            string
 	Timeout        time.Duration
+	PoolTimeout    time.Duration
 	PoolSize       int
 	MasterName     string
 }
@@ -125,7 +126,7 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 			SentinelPassword: redisPassword,
 			Password:         redisPassword,
 			PoolSize:         config.PoolSize,
-			PoolTimeout:      opTimeout,
+			PoolTimeout:      config.PoolTimeout,
 			ReadTimeout:      opTimeout,
 			WriteTimeout:     opTimeout,
 			IdleTimeout:      opTimeout,
@@ -142,7 +143,7 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 			Password:     redisPassword,
 			Addr:         host,
 			PoolSize:     config.PoolSize,
-			PoolTimeout:  opTimeout,
+			PoolTimeout:  config.PoolTimeout,
 			ReadTimeout:  opTimeout,
 			WriteTimeout: opTimeout,
 			IdleTimeout:  opTimeout,
