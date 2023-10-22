@@ -51,13 +51,14 @@ func parseRedisURL(redisURL string) (isSentinel bool, isTLS bool, password strin
 }
 
 type Config struct {
-	CAFile         string // optional, if not set, will use host CA
-	ClientKeyFile  string
-	ClientCertFile string
-	URL            string
-	Timeout        time.Duration
-	PoolSize       int
-	MasterName     string
+	CAFile                  string // optional, if not set, will use host CA
+	ClientKeyFile           string
+	ClientCertFile          string
+	URL                     string
+	Timeout                 time.Duration
+	PoolSize                int
+	MasterName              string
+	ForceInsecureSkipVerify bool
 }
 
 func SetupRedisClient(config *Config) (*redis.Client, error) {
@@ -99,7 +100,7 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 		// establish TLS connections to Sentinel, but plain TCP connections to masters.
 		redisDialer = func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return tls.Dial(network, addr, &tls.Config{
-				InsecureSkipVerify: flag.Lookup("test.v") != nil, // during test runs, skip verification
+				InsecureSkipVerify: flag.Lookup("test.v") != nil || config.ForceInsecureSkipVerify, // during test runs, skip verification
 				RootCAs:            certPool,
 				Certificates:       redisClientCerts,
 				ClientSessionCache: tls.NewLRUClientSessionCache(100),
@@ -154,6 +155,7 @@ func SetupRedisClient(config *Config) (*redis.Client, error) {
 	if err := c.Ping(context.Background()).Err(); err != nil {
 		return nil, errors.New("error pinging redis: %v", err)
 	}
+	log.Debug("Redis client configured and successfully pinged")
 	return c, nil
 }
 
